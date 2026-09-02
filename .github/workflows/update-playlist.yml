@@ -1,0 +1,46 @@
+name: Update quiz data from playlist
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # runs daily at 03:00 UTC — adjust as you like
+  workflow_dispatch: {}     # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install yt-dlp youtube-transcript-api groq
+
+      - name: Process new playlist videos
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PLAYLIST_URL: ${{ vars.PLAYLIST_URL }}
+        run: |
+          cd scripts
+          python process_playlist.py "$PLAYLIST_URL" --out-dir ../web/data
+
+      - name: Rebuild mock-timestamp map
+        run: |
+          cd mock-extractor
+          python build_mock_map.py --data-dir ../web/data --out ../web/data/mock-timestamp-map.json
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "quiz-bot"
+          git config user.email "quiz-bot@users.noreply.github.com"
+          git add web/data
+          git diff --cached --quiet || git commit -m "Auto-update: new playlist videos processed"
+          git push
